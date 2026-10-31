@@ -6,9 +6,17 @@ import Title from '../../components/admin/Title';
 import AdminNavbar from '../../components/admin/AdminNavbar';
 import BlurCircle from '../../components/BlurCircle';
 import { dateFormat } from '../../lib/dateFormat';
+import toast from 'react-hot-toast';
+import { useAppContext } from '../../context/AppContext';
+
+
 
 const Dashboard = () => {
+
     const currency = import.meta.env.VITE_CURRENCY
+
+    const {axios , getToken,user} = useAppContext();
+
 
 const [dashboardData, setDashboardData] = useState({
   totalBookings: 0,
@@ -44,14 +52,32 @@ const dashboardCards = [
     
 
     const fetchDashboardData = async () => {
-        setDashboardData(dummyDashboardData)
-        setLoading(false)
+       try{
+
+        const token = await getToken();
+        const {data}= await axios.get('/api/admin/dashboard',{
+                headers : {Authorization:`Bearer ${token}`}})
+
+        if(data.success){
+            setDashboardData(data.dashboardData)
+            setLoading(false);
+        }else{
+          toast.error(data.message)
+        }
+
+       }catch(error){
+        toast.error("Error fetching dashboard data : ",error)
+
+
+       }
 
     };
 
     useEffect ( ()=> {
+      if(user){
         fetchDashboardData();
-    },[]);
+      }
+    },[user]);
 
 
 return !loading ? (

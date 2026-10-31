@@ -7,25 +7,70 @@ import DateSelect from '../components/DateSelect'
 import { useEffect, useState } from 'react'
 import MovieCard from '../components/MovieCard'
 import Loading from '../components/Loading'
+import { useAppContext } from '../context/AppContext'
+import toast from 'react-hot-toast'
 
 const MovieDetails = () => {
   const { id } = useParams()
   const [show,setShow]=useState(null)
   const navigate =useNavigate()
+  const {shows,axios,getToken , user,fetchFavoriteMovies , favoriteMovies  }= useAppContext()
+  const genres = Array.isArray(show?.movie?.genres)
+    ? show.movie.genres
+        .map(genre => typeof genre === 'string' ? genre : genre?.name)
+        .filter(Boolean)
+    : []
+  const castMembers = Array.isArray(show?.movie?.casts)
+    ? show.movie.casts
+        .filter(cast => typeof cast === 'string' || cast?.type === 'Cast')
+        .map(cast => typeof cast === 'string'
+          ? { name: cast }
+          : {
+              ...cast,
+              name: cast.name || cast.full_name || cast.person_name || cast.actor_name
+            })
+        .filter(cast => cast.name)
+    : []
 
   const getShow= async ()=>{
-    const show = dummyShowsData.find(show => show._id === id)
-    if(show){
-     setShow({
-      movie:show,
-      dateTime:dummyDateTimeData
-    })
-  }
+    try{
+      const {data} = await axios.get(`/api/show/${id}`)
+      if(data.success){
+        setShow(data)
+      }
+
+    }catch(error){
+      console.error(error)
+    }
 }
 
   useEffect(()=>{
     getShow()
   },[id])
+
+  const handleFavorite = async () =>{
+    try{
+      if(!user){
+        return toast.error("please login to procced")
+      }
+      const token = await getToken();
+      const {data} = await axios.post('api/user/update-favorite',{
+        movieId :id },{
+                headers : {Authorization:`Bearer ${token}`}}
+      )
+      if(data.success){
+        await fetchFavoriteMovies()
+        toast.success(data.message)
+      }else{
+        toast.error(data.message || 'Unable to update favorites')
+      }
+
+    }catch(error){
+      console.error(error)
+      toast.error(error.response?.data?.message || 'Unable to update favorites')
+
+    }
+  }
 
   return show ? (
     <div className='px-6 md:px-16 lg:px-40 pt-30 md:pt-50'>
@@ -56,9 +101,11 @@ const MovieDetails = () => {
           </p>
 
           <p>
-            {timeFormat(show.movie.runtime)} •{" "}
-            {show.movie.genres.map(genre => genre.name).join(", ")} •{" "}
-            {show.movie.release_date.split("-")[0]}
+            {[
+              timeFormat(show.movie.runtime),
+              genres.join(", "),
+              show.movie.release_date?.split("-")[0]
+            ].filter(Boolean).join(" • ")}
           </p>
           <div className='flex items-center flex-wrap gap-4 mt-4'>
             <button
@@ -75,9 +122,18 @@ const MovieDetails = () => {
             </a>
 
             <button
+              onClick={handleFavorite}
+              type='button'
               className='bg-gray-700 p-2.5 rounded-full transition cursor-pointer active:scale-95'
+              aria-label={favoriteMovies.some(movie => movie._id === id) ? 'Remove from favorites' : 'Add to favorites'}
             >
-              <Heart className='w-5 h-5' />
+              <Heart
+        className={`w-5 h-5 ${
+    favoriteMovies.find(movie => movie._id === id)
+      ? 'fill-primary text-primary'
+      : ''
+  }`}
+/>
             </button>
           </div>
 
@@ -86,22 +142,33 @@ const MovieDetails = () => {
       <p className='text-lg font-medium mt-20'>Your Favorite Cast</p>
 <div className='overflow-x-auto no-scrollbar mt-8 pb-4'>
   <div className='flex items-center gap-4 w-max px-4'>
-    {show.movie.casts.slice(0, 12).map((cast, index) => (
+    {castMembers.slice(0, 12).map((cast, index) => (
       <div key={index} className='flex flex-col items-center text-center'>
-        <img
-          src={cast.profile_path}
-          alt=""
-          className='rounded-full h-20 md:h-20 aspect-square object-cover'
-        />
-        <p className='font-medium text-xs mt-3'>{cast.name}</p>
+        {cast.profile_path || cast.image || cast.headshot ? (
+          <img
+            src={cast.profile_path || cast.image || cast.headshot}
+            alt={cast.name}
+            className='rounded-full h-20 w-20 aspect-square object-cover'
+          />
+        ) : (
+          <div className='rounded-full h-20 w-20 flex items-center justify-center bg-gray-700 text-gray-200 text-xl font-medium'>
+            {cast.name.charAt(0)}
+          </div>
+        )}
+        <p className='font-medium text-xs mt-3'>
+          {cast.name}
+        </p>
       </div>
     ))}
+    {castMembers.length === 0 && (
+      <p className='text-sm text-gray-400'>Cast information is not available.</p>
+    )}
   </div>
 </div>
   <DateSelect dateTime={show.dateTime} id={id} />
   <p className='text-lg font-medium mt-20 mb-8'>You May Also Like</p>
   <div className='flex flex-wrap max-sm:justify-center gap-8'>
-     { dummyShowsData.slice(0,4).map((movie,index)=>(
+     { shows.slice(0,4).map((movie,index)=>(
       <MovieCard key={index} movie={movie} />
      ))}
      </div>
