@@ -42,6 +42,7 @@ const createCheckoutSession = async (booking, movie, origin) => {
     });
 
     booking.paymentLink = session.url;
+    booking.stripeSessionId = session.id;
     await booking.save();
     return session.url;
 };

@@ -22,31 +22,46 @@ export const stripeWebhooks = async (request, response) => {
 
 try {
     switch (event.type) {
+        case "checkout.session.completed":
+        case "checkout.session.async_payment_succeeded":
         case "payment_intent.succeeded": {
-            const paymentIntent = event.data.object;
-
-            const sessionList = await stripeInstance.checkout.sessions.list({
-                payment_intent: paymentIntent.id
-            });
-
-            const session = sessionList.data[0];
-            const { bookingId } = session.metadata;
-
-            await Booking.findByIdAndUpdate(bookingId, {
-                isPaid : true,
-                paymentLink :"",
-
-            })
-    
-
-            // send confirmation email
-            await inngest.send({
-                name: "app/show.booked",
-                data: {
-                    bookingId
+            let session;
+            if (event.type === "payment_intent.succeeded") {
+                const sessionList = await stripeInstance.checkout.sessions.list({
+                    payment_intent: event.data.object.id,
+                    limit: 1
+                });
+                session = sessionList.data[0];
+                if (!session) {
+                    throw new Error(
+                        `No Checkout session found for payment intent ${event.data.object.id}.`
+                    );
                 }
-            });
+            } else {
+                session = event.data.object;
+            }
 
+            if (session.payment_status !== "paid") {
+                break;
+            }
+
+            const bookingId = session.metadata?.bookingId;
+            if (!bookingId) {
+                throw new Error(`Checkout session ${session.id} has no bookingId metadata.`);
+            }
+
+            const booking = await Booking.findOneAndUpdate(
+                { _id: bookingId, isPaid: false },
+                { isPaid: true, paymentLink: "" },
+                { new: true }
+            );
+
+            if (booking) {
+                await inngest.send({
+                    name: "app/show.booked",
+                    data: { bookingId }
+                });
+            }
             break;
         }
 

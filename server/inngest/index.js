@@ -4,6 +4,7 @@ import User from "../models/user.js";
 import Booking from "../models/Booking.js";
 import Show from "../models/Show.js";
 import sendEmail from "../configs/nodeMailer.js";
+import stripe from "stripe";
 
 // Create Inngest client
 export const inngest = new Inngest({
@@ -93,26 +94,60 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
         );
 
         await step.run("check-payment-status", async () => {
-
             const bookingId = event.data.bookingId;
-
             const booking = await Booking.findById(bookingId);
 
-            // Booking may already have been deleted
             if (!booking) {
                 return;
             }
 
-            // If payment is already completed,
-            // don't release the seats
             if (booking.isPaid) {
                 return;
+            }
+
+            if (!booking.stripeSessionId || !process.env.STRIPE_SECRET_KEY) {
+                throw new Error(
+                    `Cannot verify Stripe payment for booking ${bookingId}.`
+                );
+            }
+
+            const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
+            let session = await stripeInstance.checkout.sessions.retrieve(
+                booking.stripeSessionId
+            );
+
+            if (session.payment_status === "paid") {
+                const paidBooking = await Booking.findOneAndUpdate(
+                    { _id: bookingId, isPaid: false },
+                    { isPaid: true, paymentLink: "" },
+                    { new: true }
+                );
+
+                if (paidBooking) {
+                    await inngest.send({
+                        name: "app/show.booked",
+                        data: { bookingId }
+                    });
+                }
+                return;
+            }
+
+            if (session.status === "open") {
+                session = await stripeInstance.checkout.sessions.expire(
+                    booking.stripeSessionId
+                );
+            }
+
+            if (session.status !== "expired" || session.payment_status === "paid") {
+                throw new Error(
+                    `Stripe session ${booking.stripeSessionId} is not safe to cancel booking ${bookingId}.`
+                );
             }
 
             const show = await Show.findById(booking.show);
 
             if (!show) {
-                return;
+                throw new Error(`Show ${booking.show} not found for booking ${bookingId}.`);
             }
 
             booking.bookedSeats.forEach((seat) => {
@@ -125,7 +160,7 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
 
             await show.save();
 
-            await Booking.findByIdAndDelete(booking._id);
+            await Booking.findOneAndDelete({ _id: booking._id, isPaid: false });
         });
     }
 );
