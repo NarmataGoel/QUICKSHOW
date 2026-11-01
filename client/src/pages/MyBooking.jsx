@@ -11,6 +11,26 @@ const MyBooking = () => {
   const { axios, getToken, user } = useAppContext()
   const [bookings, setBookings] = useState([])
   const [isLoading, setLoading] = useState(true)
+  const [payingBookingId, setPayingBookingId] = useState(null)
+
+  const handlePayNow = async (bookingId) => {
+    setPayingBookingId(bookingId)
+    try {
+      const token = await getToken()
+      const { data } = await axios.post(`/api/booking/${bookingId}/pay`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (!data.success || !data.url) {
+        throw new Error(data.message || 'Could not start payment.')
+      }
+
+      window.location.assign(data.url)
+    } catch (error) {
+      console.error(error)
+      toast.error(error.response?.data?.message || error.message || 'Could not start payment.')
+      setPayingBookingId(null)
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -85,8 +105,13 @@ const MyBooking = () => {
                 {currency}{item.amount}
               </p>
               {!item.isPaid ? (
-                <button className='bg-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer'>
-                  Pay Now
+                <button
+                  type='button'
+                  onClick={() => handlePayNow(item._id)}
+                  disabled={payingBookingId === item._id}
+                  className='bg-primary px-4 py-1.5 mb-3 text-sm rounded-full font-medium cursor-pointer disabled:opacity-60'
+                >
+                  {payingBookingId === item._id ? 'Opening...' : 'Pay Now'}
                 </button>
               ) : (
                 <span className='mb-3 text-sm text-green-400'>Paid</span>

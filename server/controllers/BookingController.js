@@ -18,6 +18,33 @@ const checkSeatsAvailability = async (showId, selectedSeats) => {
     }
 }
 
+const createCheckoutSession = async (booking, movie, origin) => {
+    const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
+    const session = await stripeInstance.checkout.sessions.create({
+        success_url: `${origin}/loading/my-bookings`,
+        cancel_url: `${origin}/my-bookings`,
+        line_items: [{
+            price_data: {
+                currency: 'usd',
+                product_data: {
+                    name: movie.title
+                },
+                unit_amount: Math.floor(booking.amount) * 100
+            },
+            quantity: 1
+        }],
+        mode: 'payment',
+        metadata: {
+            bookingId: booking._id.toString()
+        },
+        expires_at: Math.floor(Date.now() / 1000) + 31 * 60
+    });
+
+    booking.paymentLink = session.url;
+    await booking.save();
+    return session.url;
+};
+
 
 export const createBooking = async (req, res) => {
     let booking;
@@ -76,38 +103,20 @@ export const createBooking = async (req, res) => {
         seatsReserved = true;
         await showData.save();
 
-        const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY)
-
-        const line_items = [{
-            price_data:{
-                currency: 'usd' ,
-                product_data :{
-               name: showData.movie.title
-                },
-                unit_amount : Math.floor(booking.amount)*100
-            },
-            quantity:1
-        }]
-
-
-        const session = await stripeInstance.checkout.sessions.create({
-            success_url: `${origin}/loading/my-bookings`,
-            cancel_url : `${origin}/my-bookings`,
-            line_items: line_items,
-            mode : 'payment',
-            metadata :{
+        const url = await createCheckoutSession(booking, showData.movie, origin);
+        
+        await inngest.send({
+            name:"app/checkpayment",
+            data:{
                 bookingId : booking._id.toString()
-            },
-           expires_at : Math.floor(Date.now()/1000) + 31*60,
-
+            }
         })
-        booking.paymentLink = session.url
-        await booking.save();
+
 
         return res.json({
             success: true,
             bookingId: booking._id,
-           url : session.url
+            url
         })
 
     } catch (error) {
@@ -138,6 +147,67 @@ export const createBooking = async (req, res) => {
         })
     }
 }
+
+export const payForBooking = async (req, res) => {
+    try {
+        const { userId } = req.auth();
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required."
+            });
+        }
+        if (!process.env.STRIPE_SECRET_KEY) {
+            console.error("Booking unavailable: STRIPE_SECRET_KEY is not configured.");
+            return res.status(503).json({
+                success: false,
+                message: "Payments are not configured. Please contact support."
+            });
+        }
+
+        const origin = req.headers.origin;
+        if (!origin) {
+            return res.status(400).json({
+                success: false,
+                message: "Unable to determine the checkout return address."
+            });
+        }
+
+        const booking = await Booking.findOne({
+            _id: req.params.bookingId,
+            user: userId
+        });
+        if (!booking) {
+            return res.status(404).json({
+                success: false,
+                message: "Booking not found."
+            });
+        }
+        if (booking.isPaid) {
+            return res.status(409).json({
+                success: false,
+                message: "This booking has already been paid."
+            });
+        }
+
+        const showData = await Show.findById(booking.show).populate('movie');
+        if (!showData?.movie) {
+            return res.status(404).json({
+                success: false,
+                message: "Show or movie not found."
+            });
+        }
+
+        const url = await createCheckoutSession(booking, showData.movie, origin);
+        return res.json({ success: true, url });
+    } catch (error) {
+        console.error("Could not start booking payment:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Could not start payment. Please try again."
+        });
+    }
+};
 
 export const getOccupiedSeats = async (req, res) => {
     try {
