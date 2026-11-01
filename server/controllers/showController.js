@@ -278,13 +278,22 @@ export const addShow =async(req,res)=> {
 // api to get all shows from the database
 export const getShows = async (req,res) =>{
     try{
-        const shows= await Show.find({showDateTime:{$gte: new Date()}}).populate('movie').sort({showDateTime:1});
+        const shows = await Show.find({showDateTime:{$gte: new Date()}}).populate('movie').sort({showDateTime:1});
 
-        // filter unique shows
-        const uniqueShows = new Set(shows.map(show => show.movie))
+        const uniqueMovies = new Map();
+        shows.forEach((show) => {
+            const movie = show.movie;
+            if (!movie) return;
+
+            const movieId = String(movie._id || movie);
+            if (!uniqueMovies.has(movieId)) {
+                uniqueMovies.set(movieId, movie);
+            }
+        });
+
         res.json({
             success :true ,
-            shows : Array.from(uniqueShows)
+            shows : Array.from(uniqueMovies.values())
         })
 
     }catch(error){

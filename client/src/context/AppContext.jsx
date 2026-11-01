@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 // used to send HTTP requests from your frontend to a backend or another API.
 
-axios.defaults.baseURL = import.meta.env.VITE_BASE_URL ;
+axios.defaults.baseURL = import.meta.env.VITE_BASE_URL || "http://localhost:3000";
 
 export const AppContext  = createContext();
 
