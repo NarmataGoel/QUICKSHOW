@@ -186,11 +186,16 @@ const sendBookingConfirmationEmail = inngest.createFunction(
             })
             .populate("user");
 
-        // Add your email sending logic here
-        await sendEmail({
-            to: booking.user.email,
-            subject: `Booking Confirmation :"${booking.show.movie.title}"  booked !`,
-           body: ` <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+        if (!booking?.user?.email || !booking.show?.movie) {
+            throw new Error(
+                `Cannot send confirmation email for booking ${bookingId}: booking, user email, or movie is missing.`
+            );
+        }
+
+        await sendEmail(
+            booking.user.email,
+            `Booking Confirmation: "${booking.show.movie.title}" booked!`,
+            ` <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Hi ${booking.user.name},</h2>
 
         <p>
@@ -221,7 +226,7 @@ const sendBookingConfirmationEmail = inngest.createFunction(
             — QuickShow Team
         </p>
     </div>`
-        })
+        );
 
     }
 );
