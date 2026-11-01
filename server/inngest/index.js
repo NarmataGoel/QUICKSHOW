@@ -2,7 +2,8 @@
 import { Inngest } from "inngest";
 import User from "../models/user.js";
 import Booking from "../models/Booking.js";
-import Show from "../models/show.js";
+import Show from "../models/Show.js";
+
 
 // Create Inngest client
 export const inngest = new Inngest({
