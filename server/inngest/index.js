@@ -109,14 +109,16 @@ const releaseSeatsAndDeleteBooking = inngest.createFunction(
                 return;
             }
 
-            const show = await Show.findById(booking.showId);
+            const show = await Show.findById(booking.show);
 
             if (!show) {
                 return;
             }
 
             booking.bookedSeats.forEach((seat) => {
-                delete show.occupiedSeats[seat];
+                if (show.occupiedSeats[seat] === booking.user) {
+                    delete show.occupiedSeats[seat];
+                }
             });
 
             show.markModified("occupiedSeats");

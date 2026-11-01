@@ -1,5 +1,6 @@
 import Booking from "../models/Booking.js"
 import Show from "../models/Show.js";
+import { inngest } from "../inngest/index.js";
 import stripe from 'stripe'
 
 const checkSeatsAvailability = async (showId, selectedSeats) => {
